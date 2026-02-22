@@ -4,7 +4,7 @@ from deepface import DeepFace
 import argparse
 from tqdm import tqdm
 
-def register_faces(image_folder, db_path="data/vector_db", collection_name="faces"):
+def register_faces(image_folder, db_path="data/vector_db", collection_name="faces", default_metadata=None):
     """
     Reads images from image_folder (filenames should be person names) 
     and adds their embeddings to ChromaDB.
@@ -30,13 +30,17 @@ def register_faces(image_folder, db_path="data/vector_db", collection_name="face
                 if embedding_objs:
                     embedding = embedding_objs[0]["embedding"]
                     
-                    # Add to ChromaDB
+                    # Prepare metadata
+                    metadata = {"name": person_name, "source": img_path}
+                    if default_metadata:
+                        metadata.update(default_metadata)
+
+                    # Add to ChromaDB (updates if ID already exists in ChromaDB v1.0+)
                     collection.add(
                         embeddings=[embedding],
                         ids=[person_name],
-                        metadatas=[{"name": person_name, "source": img_path}]
+                        metadatas=[metadata]
                     )
-                    # print(f"Registered: {person_name}")
                 else:
                     print(f"No face detected in {filename}, skipping.")
                     
