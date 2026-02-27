@@ -5,3 +5,4 @@ pandas
 langchain-core
 pydantic
 tf-keras
+python-dotenv

@@ -1,0 +1,5 @@
+\Users\ayush\Downloads\sonar-scanner-cli-8.0.1.6346-linux-x64\sonar-scanner-8.0.1.6346-linux-x64\bin\sonar-scanner \
+  -Dsonar.projectKey= ai powered project \
+  -Dsonar.sources=. \
+  -Dsonar.host.url=http://localhost:9000 \
+  -Dsonar.token=sqp_5fb421100c6f22ec41eedae90a5b9478344b87a9

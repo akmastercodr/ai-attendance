@@ -9,6 +9,10 @@ from agents.detection import FaceDetectionAgent
 from agents.matcher import IdentityMatchingAgent
 from agents.logger import AttendanceLoggingAgent
 from agents.alerter import AlertAgent
+from agents.reporter import ReportGenerationAgent
+from dotenv import load_dotenv
+
+load_dotenv() # Load environment variables from .env
 
 app = Flask(__name__)
 CORS(app)
@@ -16,78 +20,65 @@ CORS(app)
 # Global instances of agents and state
 config = {
     "logger": {"cooldown_minutes": 1},
-    "alerter": {"unknown_threshold": 3, "time_window_seconds": 30}
+    "alerter": {"unknown_threshold": 3, "time_window_seconds": 30},
+    "reporter": {"report_dir": "data/reports"}
 }
 
 detector = FaceDetectionAgent()
 matcher = IdentityMatchingAgent()
 logger_agent = AttendanceLoggingAgent(config=config["logger"])
 alerter = AlertAgent(config=config["alerter"])
-
-camera_on = True
-camera = None
-
-def get_camera():
-    global camera
-    if camera is None:
-        camera = cv2.VideoCapture(0)
-    return camera
-
-def generate_frames():
-    global camera_on, camera
-    while True:
-        if not camera_on:
-            # Send a black frame or just wait
-            time.sleep(0.1)
-            continue
-            
-        cap = get_camera()
-        success, frame = cap.read()
-        if not success:
-            break
-        else:
-            # 1. Face Detection Agent
-            faces = detector.run(frame)
-            
-            for face_data in faces:
-                # 2. Identity Matching Agent
-                match_result = matcher.run(face_data)
-                
-                # 3. Attendance Logging Agent
-                if match_result["identity"] != "Unknown":
-                    logger_agent.run(match_result)
-                
-                # 4. Alert Agent
-                alerter.run(match_result)
-                
-                # Draw visual feedback
-                x, y, w, h = match_result["box"]
-                color = (0, 255, 0) if match_result["identity"] != "Unknown" else (0, 0, 255)
-                cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
-                cv2.putText(frame, match_result["identity"], (x, y-10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
-
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+reporter = ReportGenerationAgent(config=config["reporter"])
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/api/process_frame', methods=['POST'])
+def process_frame():
+    try:
+        data = request.json
+        image_data = data.get('image') # Base64 string
+        
+        if not image_data:
+            return jsonify({"error": "No image data"}), 400
+            
+        # Decode base64 image
+        header, encoded = image_data.split(",", 1)
+        binary_data = base64.b64decode(encoded)
+        nparr = np.frombuffer(binary_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({"error": "Failed to decode image"}), 400
 
-@app.route('/api/toggle_camera', methods=['POST'])
-def toggle_camera():
-    global camera_on, camera
-    camera_on = not camera_on
-    if not camera_on and camera is not None:
-        camera.release()
-        camera = None
-    return jsonify({"camera_on": camera_on})
+        # 1. Face Detection Agent
+        faces = detector.run(frame)
+        
+        results = []
+        for face_data in faces:
+            # 2. Identity Matching Agent
+            match_result = matcher.run(face_data)
+            
+            # 3. Attendance Logging Agent
+            if match_result["identity"] != "Unknown":
+                logger_agent.run(match_result)
+            
+            # 4. Alert Agent
+            alerter.run(match_result)
+            
+            # Prepare result for frontend
+            results.append({
+                "identity": match_result["identity"],
+                "box": match_result["box"], # [x, y, w, h]
+                "confidence": float(match_result.get("confidence", 0))
+            })
+
+        return jsonify({"status": "success", "results": results})
+        
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/users')
 def get_users():
@@ -136,22 +127,39 @@ def update_user():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/snapshot')
-def get_snapshot():
-    if not camera.isOpened():
-        return jsonify({"error": "Camera is not active"}), 400
-    
-    success, frame = camera.read()
-    if not success:
-        return jsonify({"error": "Failed to capture frame"}), 500
+@app.route('/api/delete_user', methods=['DELETE'])
+def delete_user():
+    try:
+        user_id = request.args.get('id')
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+            
+        # Delete from ChromaDB
+        matcher.collection.delete(ids=[user_id])
         
-    ret, buffer = cv2.imencode('.jpg', frame)
-    if not ret:
-        return jsonify({"error": "Failed to encode frame"}), 500
+        return jsonify({"status": "success", "message": f"User {user_id} deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/send_report', methods=['POST'])
+def send_report():
+    try:
+        data = request.json
+        recipient = data.get('recipient')
+        date_str = data.get('date') # Optional
         
-    # Return as base64 for easy handling in JS
-    img_base64 = base64.b64encode(buffer).decode('utf-8')
-    return jsonify({"image": f"data:image/jpeg;base64,{img_base64}"})
+        if not recipient:
+            # Fallback to env var if not in request
+            recipient = os.getenv("RECIPIENT_EMAIL")
+        
+        if not recipient:
+            return jsonify({"error": "Recipient email is required"}), 400
+            
+        result = reporter.send_report_email(recipient, date_str)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/register_student', methods=['POST'])
 def register_student():
@@ -170,6 +178,9 @@ def register_student():
         nparr = np.frombuffer(binary_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
+        if img is None:
+            return jsonify({"error": "Failed to decode image"}), 400
+
         # Temp save for DeepFace processing
         temp_path = f"data/temp_reg_{int(time.time())}.jpg"
         cv2.imwrite(temp_path, img)
