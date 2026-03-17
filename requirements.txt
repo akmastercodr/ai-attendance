@@ -2,7 +2,11 @@ opencv-python
 deepface
 chromadb
 pandas
+flask
+flask-cors
+python-dotenv
+tqdm
+numpy
+tf-keras
 langchain-core
 pydantic
-tf-keras
-python-dotenv
