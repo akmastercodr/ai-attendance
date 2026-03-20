@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+      - dev
+      - prod
+      - qa
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -17,13 +20,31 @@ jobs:
         with:
           fetch-depth: 0  # Essential for Sonar to calculate "New Code" correctly
 
+      - name: Set Sonar Project Key and Name
+        run: |
+          if [ "${{ github.ref_name }}" == "master" ]; then
+            echo "SONAR_PROJECT_KEY=ai-attendance-master" >> $GITHUB_ENV
+            echo "SONAR_PROJECT_NAME=AI Attendance Master" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == "dev" ]; then
+            echo "SONAR_PROJECT_KEY=ai-attendance-dev" >> $GITHUB_ENV
+            echo "SONAR_PROJECT_NAME=AI Attendance Dev" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == "prod" ]; then
+            echo "SONAR_PROJECT_KEY=ai-attendance-prod" >> $GITHUB_ENV
+            echo "SONAR_PROJECT_NAME=AI Attendance Prod" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == "qa" ]; then
+            echo "SONAR_PROJECT_KEY=ai-attendance-qa" >> $GITHUB_ENV
+            echo "SONAR_PROJECT_NAME=AI Attendance QA" >> $GITHUB_ENV
+          else
+            echo "SONAR_PROJECT_KEY=ai-attendance-${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "SONAR_PROJECT_NAME=AI Attendance ${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # Remove this line if using SonarCloud
-        # Optional: Add args if you don't want a sonar-project.properties file
-        # with:
-        #   args: >
-        #     -Dsonar.projectKey=my_project_key
-        #     -Dsonar.sources=src
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.projectName="${{ env.SONAR_PROJECT_NAME }}"
