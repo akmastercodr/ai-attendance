@@ -7,8 +7,6 @@ on:
       - dev
       - prod
       - qa
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
   sonarqube:
@@ -22,10 +20,7 @@ jobs:
 
       - name: Set Sonar Project Key and Name
         run: |
-          if [ "${{ github.ref_name }}" == "master" ]; then
-            echo "SONAR_PROJECT_KEY=ai-attendance-master" >> $GITHUB_ENV
-            echo "SONAR_PROJECT_NAME=AI Attendance Master" >> $GITHUB_ENV
-          elif [ "${{ github.ref_name }}" == "dev" ]; then
+          if [ "${{ github.ref_name }}" == "dev" ]; then
             echo "SONAR_PROJECT_KEY=ai-attendance-dev" >> $GITHUB_ENV
             echo "SONAR_PROJECT_NAME=AI Attendance Dev" >> $GITHUB_ENV
           elif [ "${{ github.ref_name }}" == "prod" ]; then
