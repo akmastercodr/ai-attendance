@@ -39,6 +39,7 @@ def process_frame():
     try:
         data = request.json
         image_data = data.get('image') # Base64 string
+        action = data.get('action', 'ENTRY')
         
         if not image_data:
             return jsonify({"error": "No image data"}), 400
@@ -59,6 +60,7 @@ def process_frame():
         for face_data in faces:
             # 2. Identity Matching Agent
             match_result = matcher.run(face_data)
+            match_result['action'] = action
             
             # 3. Attendance Logging Agent
             if match_result["identity"] != "Unknown":
@@ -225,7 +227,7 @@ def register_student():
 def get_attendance():
     try:
         conn = sqlite3.connect('data/attendance.sqlite')
-        query = "SELECT person_id, timestamp, confidence FROM attendance ORDER BY timestamp DESC LIMIT 20"
+        query = "SELECT person_id, timestamp, confidence, action FROM attendance ORDER BY timestamp DESC LIMIT 20"
         df = pd.read_sql_query(query, conn)
         conn.close()
         return jsonify(df.to_dict(orient='records'))

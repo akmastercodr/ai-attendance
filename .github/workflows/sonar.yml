@@ -3,7 +3,6 @@ name: SonarQube Analysis
 on:
   push:
     branches:
-      - master
       - dev
       - prod
       - qa
@@ -16,7 +15,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Essential for Sonar to calculate "New Code" correctly
+          fetch-depth: 0  
 
       - name: Set Sonar Project Key and Name
         run: |
@@ -38,7 +37,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # Remove this line if using SonarCloud
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} 
         with:
           args: >
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}

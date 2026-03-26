@@ -22,9 +22,17 @@ class AttendanceLoggingAgent(BaseAgent):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 person_id TEXT NOT NULL,
                 timestamp DATETIME NOT NULL,
-                confidence REAL
+                confidence REAL,
+                action TEXT DEFAULT 'ENTRY'
             )
         ''')
+        
+        # Migration: Add action column if it doesn't exist
+        cursor.execute("PRAGMA table_info(attendance)")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'action' not in columns:
+            cursor.execute("ALTER TABLE attendance ADD COLUMN action TEXT DEFAULT 'ENTRY'")
+            
         conn.commit()
         conn.close()
 
@@ -48,11 +56,15 @@ class AttendanceLoggingAgent(BaseAgent):
     def run(self, match_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Processes match result and logs if valid.
-        Input: {"identity": str, "confidence": float, ...}
+        Input: {"identity": str, "confidence": float, "action": str, ...}
         """
         try:
             person_id = match_result.get("identity")
             confidence = match_result.get("confidence", 0)
+            action = match_result.get("action", "ENTRY").upper()
+            
+            if action not in ["ENTRY", "EXIT"]:
+                action = "ENTRY"
             
             if person_id == "Unknown" or not person_id:
                 return {"status": "skipped", "reason": "Unknown identity"}
@@ -66,9 +78,9 @@ class AttendanceLoggingAgent(BaseAgent):
             cursor = conn.cursor()
             now = datetime.datetime.now()
             cursor.execute('''
-                INSERT INTO attendance (person_id, timestamp, confidence)
-                VALUES (?, ?, ?)
-            ''', (person_id, now, confidence))
+                INSERT INTO attendance (person_id, timestamp, confidence, action)
+                VALUES (?, ?, ?, ?)
+            ''', (person_id, now, confidence, action))
             conn.commit()
             conn.close()
             

@@ -66,10 +66,13 @@ async function captureLoop() {
     const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);
 
     try {
+        const actionSelect = document.getElementById('attendance-mode');
+        const currentAction = actionSelect ? actionSelect.value : 'ENTRY';
+        
         const response = await fetch('/api/process_frame', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: imageData })
+            body: JSON.stringify({ image: imageData, action: currentAction })
         });
         const data = await response.json();
 
@@ -292,16 +295,22 @@ closeEmailModal.onclick = cancelEmailBtn.onclick = () => {
 emailForm.onsubmit = async (e) => {
     e.preventDefault();
     const recipient = document.getElementById('report-recipient').value;
+    const timeframe = document.getElementById('report-timeframe') ? document.getElementById('report-timeframe').value : 'today';
     const submitBtn = document.getElementById('confirm-send-email');
 
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    
+    const requestBody = { recipient };
+    if (timeframe === "all") {
+        requestBody.date = "all";
+    }
 
     try {
         const response = await fetch('/api/send_report', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recipient })
+            body: JSON.stringify(requestBody)
         });
         const data = await response.json();
 
@@ -309,8 +318,11 @@ emailForm.onsubmit = async (e) => {
             alert("Report sent successfully to " + recipient);
             emailModal.style.display = 'none';
             emailForm.reset();
+        } else if (data.status === 'empty') {
+            alert("No attendance records found for the selected timeframe. Email not sent.");
         } else {
-            alert("Error: " + data.message);
+            const errorMsg = data.message || data.error || JSON.stringify(data);
+            alert("Error: " + errorMsg);
         }
     } catch (err) {
         alert("Failed to send report. Check console for details.");
@@ -327,14 +339,23 @@ function updateActivityLog() {
         log.innerHTML = '';
         data.forEach(item => {
             const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // Generate visual badge based on ENTRY or EXIT action
+            const isExit = item.action === 'EXIT';
+            const actionBadge = isExit 
+                ? '<span style="background-color: rgba(255, 62, 62, 0.2); color: #ff3e3e; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 0.5rem; border: 1px solid rgba(255,62,62,0.3)">LEAVE</span>'
+                : '<span style="background-color: rgba(63, 185, 80, 0.2); color: #3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 0.5rem; border: 1px solid rgba(63,185,80,0.3)">ENTRY</span>';
+                
+            const iconColor = isExit ? '#ff3e3e' : '#3fb950';    
+                
             log.insertAdjacentHTML('beforeend', `
                 <div class="activity-item">
                     <div class="activity-avatar">${item.person_id.substring(0, 2).toUpperCase()}</div>
                     <div class="activity-info">
-                        <span class="activity-name">${item.person_id}</span>
+                        <span class="activity-name">${item.person_id} ${actionBadge}</span>
                         <span class="activity-time">${time} • ${(item.confidence * 100).toFixed(1)}%</span>
                     </div>
-                    <i class="fas fa-check-circle" style="color: #3fb950"></i>
+                    <i class="fas fa-check-circle" style="color: ${iconColor}"></i>
                 </div>
             `);
         });
